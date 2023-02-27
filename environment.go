@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	flag "github.com/spf13/pflag"
@@ -49,13 +48,6 @@ func (env *environment) validate() error {
 			return fmt.Errorf("both a message and a config-modifying flag were provided")
 		}
 		return nil
-	}
-
-	// If no such flags were provided, there should be a message.
-	if env.message == "" {
-		fmt.Fprintln(os.Stderr, "Usage:")
-		env.fs.PrintDefaults()
-		return fmt.Errorf("no message provided")
 	}
 
 	return nil

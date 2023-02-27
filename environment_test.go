@@ -13,7 +13,7 @@ func TestValidation(t *testing.T) {
 	}
 
 	invalid := []string{
-		"",
+
 		"-t token hello",
 		"-a hello",
 	}

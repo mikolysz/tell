@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 
@@ -16,10 +17,7 @@ func main() {
 	// Set up the environment
 	env, err := initEnvironment(os.Args[1:])
 	must("", err)
-
-	// We don't validate the environment yet, as we expect new, confused tell users to try running it without arguments, which would ordinarily fail.
-	// We don't want to show them a "usage" message, but instead a "no token" message.
-	// So, we load the config and see if the token exists first
+	must("Error:", env.validate())
 
 	configPath, err := defaultConfigPath()
 	must("Could not get default config path:", err)
@@ -41,8 +39,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, "No authorized user found. Please authorize a user with 'tell -a'")
 		os.Exit(1)
 	}
-
-	must("Error:", env.validate())
 
 	// Set the token or authorize the user if requested
 	if env.token != "" {
@@ -69,7 +65,18 @@ func main() {
 	}
 
 	// If we got here, we're ready to send a message
-	_, err = bot.SendMessage(cfg.ChatID, env.message, nil)
+	if env.message != "" {
+		_, err = bot.SendMessage(cfg.ChatID, env.message, nil)
+		must("Could not send message:", err)
+		os.Exit(0)
+	}
+
+	// If no message was provided on the command line, read from stdin.
+
+	bytes, err := io.ReadAll(os.Stdin)
+	must("Could not read message from stdin:", err)
+
+	_, err = bot.SendMessage(cfg.ChatID, string(bytes), nil)
 	must("Could not send message:", err)
 }
 
