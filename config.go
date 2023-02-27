@@ -34,3 +34,16 @@ func loadConfig(path string) (*config, error) {
 
 	return &cfg, nil
 }
+
+func (c *config) save(path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to open or create config file: %w", err)
+	}
+	defer f.Close()
+
+	if err := json.NewEncoder(f).Encode(c); err != nil {
+		return fmt.Errorf("failed to encode config file: %w", err)
+	}
+	return nil
+}
