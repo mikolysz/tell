@@ -17,14 +17,13 @@ func main() {
 	// Set up the environment
 	env, err := initEnvironment(os.Args[1:])
 	must("", err)
-	must("Error:", env.validate())
 
 	configPath, err := defaultConfigPath()
 	must("Could not get default config path:", err)
 
 	cfg, err := loadConfig(configPath)
 
-	// Crash the program if loading the config has failed, but not if it's just not there
+	// Exit the program if loading the config has failed, but not if it's just not there
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		must("Could not load config:", err)
 	}
@@ -64,20 +63,13 @@ func main() {
 		os.Exit(0)
 	}
 
-	// If we got here, we're ready to send a message
-	if env.message != "" {
-		_, err = bot.SendMessage(cfg.ChatID, env.message, nil)
-		must("Could not send message:", err)
-		os.Exit(0)
+	if env.msg.text == "" && env.msg.filePath == "" {
+		bytes, err := io.ReadAll(os.Stdin)
+		must("Could not read message from stdin:", err)
+		env.msg.text = string(bytes)
 	}
 
-	// If no message was provided on the command line, read from stdin.
-
-	bytes, err := io.ReadAll(os.Stdin)
-	must("Could not read message from stdin:", err)
-
-	_, err = bot.SendMessage(cfg.ChatID, string(bytes), nil)
-	must("Could not send message:", err)
+	must("Could not send message:", env.msg.Send(bot, cfg.ChatID))
 }
 
 func authorize(bot *gotgbot.Bot) (chatId int64, err error) {
