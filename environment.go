@@ -107,6 +107,7 @@ func initEnvironment(args []string) (*environment, error) {
 
 		if detected == fileUploadMessage {
 			env.msg.messageType = fileUploadMessage // Too large to send with the chosen filetype, forced override
+			fmt.Fprintln(os.Stderr, "Warning: File is too big, uploading to transfer.sh. Pass --no-upload to make this fail instead.")
 		} else {
 			env.msg.messageType = typ
 		}

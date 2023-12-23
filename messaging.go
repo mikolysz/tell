@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 )
@@ -105,11 +106,14 @@ type Message struct {
 
 func (msg *Message) Send(bot *gotgbot.Bot, chatID int64) error {
 	if msg.messageType == directoryMessage {
-		zipPath, err := createArchive(msg.filePath)
+		zipPath, remove, err := createArchive(msg.filePath)
+		if remove != nil {
+			defer remove()
+		}
+
 		if err != nil {
 			return fmt.Errorf("failed to create archive: %w", err)
 		}
-		defer os.Remove(zipPath)
 		msg.filePath = zipPath
 
 		stat, err := os.Lstat(zipPath)
@@ -201,7 +205,7 @@ func uploadFile(filePath string) (string, error) {
 }
 
 // createArchive creates a zip archive of a directory
-func createArchive(dirPath string) (zipPath string, remove func(), err error) {
+func createArchive(srcDirPath string) (zipPath string, remove func(), err error) {
 	tmpdir, err := os.MkdirTemp("", "tell")
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create temporary file: %w", err)
@@ -211,55 +215,67 @@ func createArchive(dirPath string) (zipPath string, remove func(), err error) {
 		os.RemoveAll(tmpdir)
 	}
 
-	dirPath, err = filepath.Abs(dirPath)
+	srcDirPath, err = filepath.Abs(srcDirPath)
 	if err != nil {
 		return "", remove, fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
-	zipPath = filepath.Join(tmpdir, filepath.Base(dirPath)+".zip")
+	zipPath = filepath.Join(tmpdir, filepath.Base(srcDirPath)+".zip")
 	zipFile, err := os.Create(zipPath)
 	if err != nil {
 		return "", remove, fmt.Errorf("failed to create zip file: %w", err)
 	}
 	defer zipFile.Close()
 
-	w := zip.NewWriter(zipFile)
-	defer w.Close()
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipWriter.Close()
 
-	if err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(srcDirPath, func(srcFilePath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk directory: %w", err)
+		}
+
+		destPath, err := filepath.Rel(srcDirPath, srcFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %w", err)
+		}
+
+		// Package zip distinguishes files and directories by whether the path ends in a '/'.
+		if info.IsDir() && !strings.HasSuffix(destPath, "/") {
+			destPath += "/"
+		}
+
+		fh, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return fmt.Errorf("Failed to create file header: %w", err)
+		}
+
+		fh.Name = destPath
+		fh.Method = zip.Deflate
+		fileWriter, err := zipWriter.CreateHeader(fh)
+		if err != nil {
+			return fmt.Errorf("failed to create zip file: %w", err)
 		}
 
 		if info.IsDir() {
 			return nil
 		}
 
-		innerPath, err := filepath.Rel(dirPath, path)
-		if err != nil {
-			return fmt.Errorf("failed to get relative path: %w", err)
-		}
-
-		f, err := w.Create(innerPath)
-		if err != nil {
-			return fmt.Errorf("failed to create zip file: %w", err)
-		}
-
-		file, err := os.Open(path)
+		srcFile, err := os.Open(srcFilePath)
 		if err != nil {
 			return fmt.Errorf("failed to open file: %w", err)
 		}
-		defer file.Close()
+		defer srcFile.Close()
 
-		_, err = io.Copy(f, file)
+		_, err = io.Copy(fileWriter, srcFile)
 		if err != nil {
 			return fmt.Errorf("failed to copy file to zip: %w", err)
 		}
 
 		return nil
 	}); err != nil {
-		return "", fmt.Errorf("failed to walk directory: %w", err)
+		return "", remove, fmt.Errorf("failed to walk directory: %w", err)
 	}
 
-	return tmpfile.Name(), nil
+	return zipPath, remove, nil
 }
